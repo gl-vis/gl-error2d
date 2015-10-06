@@ -2,6 +2,8 @@
 
 var createShader = require('gl-shader')
 var createBuffer = require('gl-buffer')
+var pool = require('typedarray-pool')
+var shaders = require('./lib/shaders')
 
 module.exports = createError2D
 
@@ -10,17 +12,55 @@ var WEIGHTS = [
   [ 1, 0, 0, 1, 0, 0],
   [ 1, 0, 0,-1, 0, 0],
   [-1, 0, 0,-1, 0, 0],
+
   [-1, 0, 0,-1, 0, 0],
-  [ 1, 0, 0,-1, 0, 0],
   [-1, 0, 0, 1, 0, 0],
+  [ 1, 0, 0, 1, 0, 0],
+
+  //x-error right cap
+  [ 1, 0, -1, 0, 0, 1],
+  [ 1, 0, -1, 0, 0,-1],
+  [ 1, 0,  1, 0, 0,-1],
+
+  [ 1, 0,  1, 0, 0,-1],
+  [ 1, 0,  1, 0, 0, 1],
+  [ 1, 0, -1, 0, 0, 1],
+
+  //x-error left cap
+  [-1, 0, -1, 0, 0, 1],
+  [-1, 0, -1, 0, 0,-1],
+  [-1, 0,  1, 0, 0,-1],
+
+  [-1, 0,  1, 0, 0,-1],
+  [-1, 0,  1, 0, 0, 1],
+  [-1, 0, -1, 0, 0, 1],
 
   //y-error bar
   [0, 1, 1, 0, 0, 0],
   [0, 1,-1, 0, 0, 0],
   [0,-1,-1, 0, 0, 0],
+
   [0,-1,-1, 0, 0, 0],
-  [0, 1,-1, 0, 0, 0],
-  [0,-1, 1, 0, 0, 0]
+  [0, 1, 1, 0, 0, 0],
+  [0,-1, 1, 0, 0, 0],
+
+  //y-error top cap
+  [ 0, 1, 0,-1, 1, 0],
+  [ 0, 1, 0,-1,-1, 0],
+  [ 0, 1, 0, 1,-1, 0],
+
+  [ 0, 1, 0, 1, 1, 0],
+  [ 0, 1, 0,-1, 1, 0],
+  [ 0, 1, 0, 1,-1, 0],
+
+  //y-error bottom cap
+  [ 0,-1, 0,-1, 1, 0],
+  [ 0,-1, 0,-1,-1, 0],
+  [ 0,-1, 0, 1,-1, 0],
+
+  [ 0,-1, 0, 1, 1, 0],
+  [ 0,-1, 0,-1, 1, 0],
+  [ 0,-1, 0, 1,-1, 0]
 ]
 
 function GLError2D(plot, shader, buffer) {
@@ -90,7 +130,7 @@ proto.draw = (function() {
       16,
       0)
 
-    shader.attributes.pixelScale.pointer(
+    shader.attributes.pixelOffset.pointer(
       gl.FLOAT,
       false,
       16,
@@ -100,7 +140,7 @@ proto.draw = (function() {
   }
 })()
 
-proto.drawPick = function() {}
+proto.drawPick = function(offset) { return offset }
 proto.pick = function(x, y) {
   return null
 }
@@ -116,7 +156,7 @@ proto.update = function(options) {
     lineWidth = +options.lineWidth
   }
 
-  var capSize = 0
+  var capSize = 5
   if('capSize' in options) {
     capSize = +options.capSize
   }
@@ -125,7 +165,7 @@ proto.update = function(options) {
 
   var bounds    = this.bounds = [Infinity, Infinity, -Infinity, -Infinity]
 
-  var numPoints  = positions.length>>1
+  var numPoints = this.numPoints = positions.length>>1
   for(var i=0; i<numPoints; ++i) {
     var x = positions[i*2]
     var y = positions[i*2+1]
@@ -149,18 +189,35 @@ proto.update = function(options) {
   var bufferData = pool.mallocFloat32(numPoints * WEIGHTS.length * 4)
   var ptr = 0
   for(var i=0; i<numPoints; ++i) {
-    var x = positions[2*i]
-    var y = positions[2*i+1]
-    var ex = errors[2*i]
-    var ey = errors[2*i+1]
+    var x   = positions[2*i]
+    var y   = positions[2*i+1]
+    var ex0 = errors[4*i]
+    var ex1 = errors[4*i+1]
+    var ey0 = errors[4*i+2]
+    var ey1 = errors[4*i+3]
 
     for(var j=0; j<WEIGHTS.length; ++j) {
       var w = WEIGHTS[j]
 
-      bufferData[ptr++] = sx * ((x - tx) + w[0] * ex)
-      bufferData[ptr++] = sy * ((y - ty) + w[1] * ey)
-      bufferData[ptr++] = lineWidth * w[2] + capSize * w[4]
-      bufferData[ptr++] = lineWidth * w[3] + capSize * w[5]
+      var dx = w[0]
+      var dy = w[1]
+
+      if(dx < 0) {
+        dx *= ex0
+      } else if(dx > 0) {
+        dx *= ex1
+      }
+
+      if(dy < 0) {
+        dy *= ey0
+      } else if(dy > 0) {
+        dy *= ey1
+      }
+
+      bufferData[ptr++] = sx * ((x - tx) + dx)
+      bufferData[ptr++] = sy * ((y - ty) + dy)
+      bufferData[ptr++] = lineWidth * w[2] + (capSize + lineWidth) * w[4]
+      bufferData[ptr++] = lineWidth * w[3] + (capSize + lineWidth) * w[5]
     }
   }
   this.buffer.update(bufferData)
@@ -168,6 +225,7 @@ proto.update = function(options) {
 }
 
 proto.dispose = function() {
+  this.plot.removeObject(this)
   this.shader.dispose()
   this.buffer.dispose()
 }
@@ -179,6 +237,8 @@ function createError2D(plot, options) {
   var errorbars = new GLError2D(plot, shader, buffer)
 
   errorbars.update(options)
+
+  plot.addObject(errorbars)
 
   return errorbars
 }

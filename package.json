@@ -21,12 +21,15 @@
     "url": "https://github.com/gl-vis/gl-error2d/issues"
   },
   "browserify": {
-    "transform": ["glslify"]
+    "transform": [
+      "glslify"
+    ]
   },
   "homepage": "https://github.com/gl-vis/gl-error2d#readme",
   "dependencies": {
     "gl-buffer": "^2.1.2",
     "gl-shader": "^4.0.5",
-    "glslify": "^2.3.1"
+    "glslify": "^2.3.1",
+    "typedarray-pool": "^1.1.0"
   }
 }
