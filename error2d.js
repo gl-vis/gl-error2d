@@ -96,6 +96,10 @@ proto.draw = (function() {
     var numPoints = this.numPoints
     var color     = this.color
 
+    if(!numPoints) {
+      return
+    }
+
     var gl          = plot.gl
     var dataBox     = plot.dataBox
     var viewBox     = plot.viewBox
