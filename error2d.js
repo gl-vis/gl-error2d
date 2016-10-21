@@ -63,11 +63,12 @@ var WEIGHTS = [
   [0, -1, 0, 1, -1, 0]
 ]
 
-function GLError2D (plot, shader, buffer) {
+function GLError2D (plot, shader, bufferHi, bufferLo) {
   this.plot = plot
 
   this.shader = shader
-  this.buffer = buffer
+  this.bufferHi = bufferHi
+  this.bufferLo = bufferLo
 
   this.bounds = [Infinity, Infinity, -Infinity, -Infinity]
 
@@ -79,18 +80,16 @@ function GLError2D (plot, shader, buffer) {
 var proto = GLError2D.prototype
 
 proto.draw = (function () {
-  var MATRIX = [
-    1, 0, 0,
-    0, 1, 0,
-    0, 0, 1
-  ]
+  var SCALE_HI = new Float32Array([0, 0])
+  var SCALE_LO = new Float32Array([0, 0])
+  var TRANSLATE_HI = new Float32Array([0, 0])
+  var TRANSLATE_LO = new Float32Array([0, 0])
 
   var PIXEL_SCALE = [1, 1]
 
   return function () {
     var plot = this.plot
     var shader = this.shader
-    var buffer = this.buffer
     var bounds = this.bounds
     var numPoints = this.numPoints
 
@@ -108,10 +107,19 @@ proto.draw = (function () {
     var dataX = dataBox[2] - dataBox[0]
     var dataY = dataBox[3] - dataBox[1]
 
-    MATRIX[0] = 2.0 * boundX / dataX
-    MATRIX[4] = 2.0 * boundY / dataY
-    MATRIX[6] = 2.0 * (bounds[0] - dataBox[0]) / dataX - 1.0
-    MATRIX[7] = 2.0 * (bounds[1] - dataBox[1]) / dataY - 1.0
+    var scaleX = 2 * boundX / dataX
+    var scaleY = 2 * boundY / dataY
+    var translateX = 2 * (bounds[0] - dataBox[0]) / dataX - 1
+    var translateY = 2 * (bounds[1] - dataBox[1]) / dataY - 1
+
+    SCALE_HI[0] = scaleX
+    SCALE_HI[1] = scaleY
+    SCALE_LO[0] = scaleX - SCALE_HI[0]
+    SCALE_LO[1] = scaleY - SCALE_HI[1]
+    TRANSLATE_HI[0] = translateX
+    TRANSLATE_HI[1] = translateY
+    TRANSLATE_LO[0] = translateX - TRANSLATE_HI[0]
+    TRANSLATE_LO[1] = translateY - TRANSLATE_HI[1]
 
     var screenX = viewBox[2] - viewBox[0]
     var screenY = viewBox[3] - viewBox[1]
@@ -119,24 +127,22 @@ proto.draw = (function () {
     PIXEL_SCALE[0] = 2.0 * pixelRatio / screenX
     PIXEL_SCALE[1] = 2.0 * pixelRatio / screenY
 
-    buffer.bind()
     shader.bind()
 
-    shader.uniforms.viewTransform = MATRIX
+    shader.uniforms.scaleHi = SCALE_HI
+    shader.uniforms.scaleLo = SCALE_LO
+    shader.uniforms.translateHi = TRANSLATE_HI
+    shader.uniforms.translateLo = TRANSLATE_LO
     shader.uniforms.pixelScale = PIXEL_SCALE
     shader.uniforms.color = this.color
 
-    shader.attributes.position.pointer(
-      gl.FLOAT,
-      false,
-      16,
-      0)
+    this.bufferLo.bind()
+    shader.attributes.positionLo.pointer(gl.FLOAT, false, 16, 0)
 
-    shader.attributes.pixelOffset.pointer(
-      gl.FLOAT,
-      false,
-      16,
-      8)
+    this.bufferHi.bind()
+    shader.attributes.positionHi.pointer(gl.FLOAT, false, 16, 0)
+
+    shader.attributes.pixelOffset.pointer(gl.FLOAT, false, 16, 8)
 
     gl.drawArrays(gl.TRIANGLES, 0, numPoints * WEIGHTS.length)
   }
@@ -190,7 +196,9 @@ proto.update = function (options) {
   var tx = bounds[0]
   var ty = bounds[1]
 
-  var bufferData = pool.mallocFloat32(numPoints * WEIGHTS.length * 4)
+  var bufferData = pool.mallocFloat64(numPoints * WEIGHTS.length * 4)
+  var bufferDataHi = pool.mallocFloat32(numPoints * WEIGHTS.length * 4)
+  var bufferDataLo = pool.mallocFloat32(numPoints * WEIGHTS.length * 4)
   var ptr = 0
   for (i = 0; i < numPoints; ++i) {
     x = positions[2 * i]
@@ -224,25 +232,32 @@ proto.update = function (options) {
       bufferData[ptr++] = lineWidth * w[3] + (capSize + lineWidth) * w[5]
     }
   }
-  this.buffer.update(bufferData)
+  for(i = 0; i < bufferData.length; i++) {
+    bufferDataHi[i] = bufferData[i]
+    bufferDataLo[i] = bufferData[i] - bufferDataHi[i]
+  }
+  this.bufferHi.update(bufferDataHi)
+  this.bufferLo.update(bufferDataLo)
   pool.free(bufferData)
 }
 
 proto.dispose = function () {
   this.plot.removeObject(this)
   this.shader.dispose()
-  this.buffer.dispose()
+  this.bufferHi.dispose()
+  this.bufferLo.dispose()
 }
 
 function createError2D (plot, options) {
   var shader = createShader(plot.gl, shaders.vertex, shaders.fragment)
-  var buffer = createBuffer(plot.gl)
+  var bufferHi = createBuffer(plot.gl)
+  var bufferLo = createBuffer(plot.gl)
 
-  var errorbars = new GLError2D(plot, shader, buffer)
+  var errorBars = new GLError2D(plot, shader, bufferHi, bufferLo)
 
-  errorbars.update(options)
+  errorBars.update(options)
 
-  plot.addObject(errorbars)
+  plot.addObject(errorBars)
 
-  return errorbars
+  return errorBars
 }
