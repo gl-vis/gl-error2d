@@ -1,13 +1,22 @@
-precision mediump float;
+precision highp float;
 
-attribute vec2 position;
+attribute vec2 positionHi;
+attribute vec2 positionLo;
 attribute vec2 pixelOffset;
 
-uniform mat3 viewTransform;
-uniform vec2 pixelScale;
+uniform vec2 scaleHi, scaleLo, translateHi, translateLo, pixelScale;
+
+vec2 project(vec2 scHi, vec2 trHi, vec2 scLo, vec2 trLo, vec2 posHi, vec2 posLo) {
+  return scHi * posHi + trHi
+       + scLo * posHi + trLo
+       + scHi * posLo
+       + scLo * posLo;
+}
 
 void main() {
-  vec3 scrPosition = viewTransform * vec3(position, 1);
+  vec3 scrPosition = vec3(
+         project(scaleHi, translateHi, scaleLo, translateLo, positionHi, positionLo),
+         1);
   gl_Position = vec4(
     scrPosition.xy + scrPosition.z * pixelScale * pixelOffset,
     0,
