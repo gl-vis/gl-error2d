@@ -7,10 +7,10 @@ attribute vec2 pixelOffset;
 uniform vec2 scaleHi, scaleLo, translateHi, translateLo, pixelScale;
 
 vec2 project(vec2 scHi, vec2 trHi, vec2 scLo, vec2 trLo, vec2 posHi, vec2 posLo) {
-  return scHi * posHi + trHi
-       + scLo * posHi + trLo
-       + scHi * posLo
-       + scLo * posLo;
+  return (posHi + trHi) * scHi
+       + (posLo + trLo) * scHi
+       + (posHi + trHi) * scLo
+       + (posLo + trLo) * scLo;
 }
 
 void main() {
