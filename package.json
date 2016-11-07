@@ -1,6 +1,6 @@
 {
   "name": "gl-error2d",
-  "version": "1.2.0",
+  "version": "1.2.1",
   "description": "2D error bars",
   "main": "error2d.js",
   "scripts": {
