@@ -29,8 +29,8 @@ setup({
   positions: positions,
   errors: errors,
   color:     [0,0,.5,.8],
-  lineWidth: 1,
-  capSize: 2
+  lineWidth: .8,
+  capSize: 4
 })
 
 
