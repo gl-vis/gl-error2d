@@ -2,7 +2,7 @@ gl-error2d
 ==========
 Error bars for 2D scatter plots
 
-#### `var scatter = require('gl-error2d')(plot, options)`
+#### `var error2d = require('gl-error2d')(plot, options)`
 
 Option | Meaning
 ---|---
